@@ -14,6 +14,14 @@ ex: ```{25% a |25%b|c}``` will select ```a``` 25% of the time ```b``` 25% of the
 
 These options can be nested with wildcards containing dynamic prompts and dynamic prompts containing wildcards both work.
 
+## Configuration
+
+The prompt generation allows you to specify configurable wildcard by adding them to the configuration.txt file.
+As an example in this repo breast sizes are configurable:
+![img.png](img.png)
+This makes it easy to switch between different styles or prompts defined in the wildcard files.
+
+To update what items are selectable add it to the configuration.txt file and reload scripts and ui from the settings menu
 
 ## Template syntax
 
