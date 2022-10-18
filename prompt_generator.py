@@ -196,12 +196,13 @@ class PromptGenerator:
         prompt = self.use_replacers(original_prompt)
         while previous_prompt != prompt:
             previous_prompt = prompt
-            prompt = self.use_replacers(original_prompt)
+            prompt = self.use_replacers(prompt)
 
         return prompt
 
     def generate(self, original_prompt, prompt_count):
         return [self.generate_single_prompt(original_prompt) for _ in range(prompt_count)]
+
 
 class Script(scripts.Script):
     def title(self):
@@ -213,7 +214,6 @@ class Script(scripts.Script):
         options = [gr.Dropdown(label=opt, choices=["RANDOM"] + option_generator.get_option_choices(opt), value="RANDOM") for opt in option_generator.get_configurable_options()]
 
         return [same_seed] + options
-
 
     def run(self, p, same_seed, *args):
         original_prompt = p.prompt[0] if type(p.prompt) == list else p.prompt
