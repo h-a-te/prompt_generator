@@ -47,6 +47,7 @@ class TagLoader:
 
 
 class TagSelector:
+    previously_selected_tags = {}
     def __init__(self, tag_loader, options):
         self.tag_loader = tag_loader
         self.selected_options = options['selected_options']
@@ -57,11 +58,17 @@ class TagSelector:
         return choices(tags)[0] if len(tags) > 0 else ""
 
     def select(self, tag):
-        parsed_tag = parse_tag(tag)
-        tags = self.tag_loader.load_tags(parsed_tag)
-        if len(tags) > 0:
-            return self.get_tag_choice(parsed_tag, tags)
-        return tag
+        self.previously_selected_tags.setdefault(tag, 0)
+
+        if self.previously_selected_tags.get(tag) < 100:
+            self.previously_selected_tags[tag] += 1
+            parsed_tag = parse_tag(tag)
+            tags = self.tag_loader.load_tags(parsed_tag)
+            if len(tags) > 0:
+                return self.get_tag_choice(parsed_tag, tags)
+            return tag
+        print(f'loaded tag more than 100 times {tag}')
+        return ""
 
 
 class TagReplacer:
