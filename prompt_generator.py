@@ -10,6 +10,7 @@ import gradio as gr
 
 from modules.processing import Processed, process_images
 from modules.shared import opts, cmd_opts, state
+from modules import scripts, script_callbacks, shared
 from modules.styles import StyleDatabase
 
 
@@ -29,28 +30,30 @@ class TagLoader:
     missing_tags = set()
 
     def load_tags(self, filePath):
-        filePath = filePath.lower()
+        filepath_lower = filePath.lower()
         if self.loaded_tags.get(filePath):
             return self.loaded_tags.get(filePath)
 
-        replacement_file = os.path.join(os.getcwd(), f"scripts\\wildcards\\{filePath}.txt")
-        if os.path.exists(replacement_file):
+        replacement_file = os.path.join(os.getcwd(), "scripts", "wildcards", f"{filePath}.txt")
+        if os.path.isfile(replacement_file):
             with open(replacement_file, encoding="utf8") as f:
                 lines = f.read().splitlines()
                 # remove 'commented out' lines
-                self.loaded_tags[filePath] = [item for item in lines if not item.startswith('#')]
+                self.loaded_tags[filepath_lower] = [item for item in lines if not item.startswith('#')]
         else:
             self.missing_tags.add(filePath)
             return []
 
-        return self.loaded_tags.get(filePath) if self.loaded_tags.get(filePath) else []
+        return self.loaded_tags.get(filepath_lower) if self.loaded_tags.get(filepath_lower) else []
 
 
 class TagSelector:
-    previously_selected_tags = {}
+
+
     def __init__(self, tag_loader, options):
         self.tag_loader = tag_loader
-        self.selected_options = options['selected_options']
+        self.previously_selected_tags = {}
+        self.selected_options = dict(options).get('selected_options', {})
 
     def get_tag_choice(self, parsed_tag, tags):
         if self.selected_options.get(parsed_tag.lower()) is not None:
@@ -190,7 +193,8 @@ class PromptGenerator:
     def __init__(self, options):
         self.tag_loader = TagLoader()
         self.tag_selector = TagSelector(self.tag_loader, options)
-        self.replacers = [TagReplacer(self.tag_selector, options), DynamicPromptReplacer()]
+        self.negative_tag_generator = NegativePromptGenerator()
+        self.replacers = [TagReplacer(self.tag_selector, options), DynamicPromptReplacer(), self.negative_tag_generator]
 
     def use_replacers(self, prompt):
         for replacer in self.replacers:
@@ -210,82 +214,68 @@ class PromptGenerator:
     def generate(self, original_prompt, prompt_count):
         return [self.generate_single_prompt(original_prompt) for _ in range(prompt_count)]
 
+    def get_negative_tags(self):
+        return self.negative_tag_generator.get_negative_tags()
+
+
+class NegativePromptGenerator:
+    def __init__(self):
+        self.re_combinations = re.compile(r"\{([^{}]*)}")
+        self.negative_tag = set()
+
+    def strip_negative_tags(self, tags):
+        matches = re.findall('\*\*.*?\*\*', tags)
+        if matches and len(self.negative_tag) == 0:
+            for match in matches:
+                self.negative_tag.add(match.replace("**", ""))
+                tags = tags.replace(match, "")
+        return tags
+
+    def replace(self, prompt):
+        return self.strip_negative_tags(prompt)
+
+    def get_negative_tags(self):
+        return " ".join(self.negative_tag)
+
+
 
 class Script(scripts.Script):
     def title(self):
         return "Prompt generator"
 
+    def show(self, is_img2img):
+        return scripts.AlwaysVisible
+
     def ui(self, is_img2img):
-        same_seed = gr.Checkbox(label='Use same seed for each image', value=False)
+        with gr.Group():
+            with gr.Row():
+                same_seed = gr.Checkbox(label='Use same prompt for each image', value=False)
+                negative_prompt = gr.Checkbox(label='Generate negative tags?', value=False)
+            option_generator = OptionGenerator(TagLoader())
+            options = [gr.Dropdown(label=opt, choices=["RANDOM"] + option_generator.get_option_choices(opt), value="RANDOM")
+                       for opt in option_generator.get_configurable_options()]
+
+        return [same_seed, negative_prompt] + options
+
+    def process(self, p, same_seed, negative_prompt, *args):
+        original_prompt = p.all_prompts[0]
         option_generator = OptionGenerator(TagLoader())
-        options = [gr.Dropdown(label=opt, choices=["RANDOM"] + option_generator.get_option_choices(opt), value="RANDOM") for opt in option_generator.get_configurable_options()]
-
-        return [same_seed] + options
-
-    def run(self, p, same_seed, *args):
-        original_prompt = p.prompt[0] if type(p.prompt) == list else p.prompt
-
-        option_generator = OptionGenerator(TagLoader())
-        options = {}
-        options['selected_options'] = option_generator.parse_options(args)
-
+        options = {
+            'selected_options': option_generator.parse_options(args)
+        }
         prompt_generator = PromptGenerator(options)
-        all_prompts = prompt_generator.generate(original_prompt, p.batch_size * p.n_iter)
 
-        # TODO: Pregenerate seeds to prevent overlaps when batch_size is > 1
-        # Known issue: Clicking "recycle seed" on an image in a batch_size > 1 may not get the correct seed.
-        # (unclear if this is an issue with this script or not, but pregenerating would prevent). However,
-        # filename and exif data on individual images match correct seeds (testable via sending png info to txt2img).
-        all_seeds = []
-        infotexts = []
+        print(p.negative_prompt)
+        for i in range(len(p.all_prompts)):
+            random.seed(p.all_seeds[0 if same_seed else i])
+            prompt = p.all_prompts[i]
+            prompt = prompt_generator.generate_single_prompt(prompt)
+            p.all_prompts[i] = prompt
 
-        initial_seed = None
-        initial_info = None
+        if same_seed and negative_prompt:
+            p.negative_prompt = prompt_generator.get_negative_tags()
+            print('generated negative prompt', p.negative_prompt)
 
-        print(f"Will process {p.batch_size * p.n_iter} images in {p.n_iter} batches.")
 
-        state.job_count = p.n_iter
-        p.n_iter = 1
-
-        original_do_not_save_grid = p.do_not_save_grid
-
-        p.do_not_save_grid = True
-
-        output_images = []
-
-        for batch_no in range(state.job_count):
-            state.job = f"{batch_no+1} out of {state.job_count}"
-            # batch_no*p.batch_size:(batch_no+1)*p.batch_size
-            p.prompt = all_prompts[batch_no*p.batch_size:(batch_no+1)*p.batch_size]
-
-            if cmd_opts.enable_console_prompts:
-                print(f"wildcards.py: {p.prompt}")
-            proc = process_images(p)
-            output_images += proc.images
-            # TODO: Also add wildcard data to exif of individual images, currently only appear on the saved grid.
-            infotext = ""
-
-            infotext += "Wildcard prompt: "+original_prompt+"\nExample: "+proc.info
-            all_seeds.append(proc.seed)
-            infotexts.append(infotext)
-            if initial_seed is None:
-                initial_info = infotext
-                initial_seed = proc.seed
-            if not same_seed:
-                p.seed = proc.seed
-
-        p.do_not_save_grid = original_do_not_save_grid
-
-        unwanted_grid_because_of_img_count = len(output_images) < 2 and opts.grid_only_if_multiple
-        if (opts.return_grid or opts.grid_save) and not p.do_not_save_grid and not unwanted_grid_because_of_img_count:
-            grid = images.image_grid(output_images, p.batch_size)
-
-            if opts.return_grid:
-                infotexts.insert(0, initial_info)
-                all_seeds.insert(0, initial_seed)
-                output_images.insert(0, grid)
-
-            if opts.grid_save:
-                images.save_image(grid, p.outpath_grids, "grid", all_seeds[0], original_prompt, opts.grid_format, info=initial_info, short_filename=not opts.grid_extended_filename, p=p, grid=True)
-
-        return Processed(p, output_images, initial_seed, initial_info, all_prompts=all_prompts, all_seeds=all_seeds, infotexts=infotexts, index_of_first_image=0)
+        if original_prompt != p.all_prompts[0]:
+            p.extra_generation_params["Wildcard prompt"] = original_prompt
