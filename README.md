@@ -14,14 +14,26 @@ ex: ```{25% a |25%b|c}``` will select ```a``` 25% of the time ```b``` 25% of the
 
 These options can be nested with wildcards containing dynamic prompts and dynamic prompts containing wildcards both work.
 
+## Install
+
+Either download this as a zip and extract it in the extensions directory located in your automatic1111's web ui. Or do a ```git checkout https://github.com/h-a-te/prompt_generator.git``` while in the extensions directory.
+After install restart your web ui and you will see 2 new options on your txt2img tab.
+![img_1.png](img_1.png)
+
 ## Configuration
 
-The prompt generation allows you to specify configurable wildcard by adding them to the configuration.txt file.
+The prompt generation allows you to specify configurable wildcards by adding them to the configuration.txt file.
 As an example in this repo breast sizes are configurable:
 ![img.png](img.png)
 This makes it easy to switch between different styles or prompts defined in the wildcard files.
 
 To update what items are selectable add it to the configuration.txt file and reload scripts and ui from the settings menu
+
+### Use same prompt for each image
+When checked the script will generate the same prompts for all your images instead of a random one for each.
+
+### Generate negative tags
+When checked if a wildcard contains a tag surrounded by ```**tag**``` it will be added to the negative prompt 
 
 ## Template syntax
 
