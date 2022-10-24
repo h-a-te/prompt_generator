@@ -35,6 +35,9 @@ When checked the script will generate the same prompts for all your images inste
 ### Generate negative tags
 When checked if a wildcard contains a tag surrounded by ```**tag**``` it will be added to the negative prompt 
 
+## Adding wildcards
+Wildcards can be added as .txt files in the wildcards directory and then used with ```__filename__```.
+
 ## Template syntax
 
 ### Dynamic prompts
