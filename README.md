@@ -1,5 +1,5 @@
-# Stable diffusion prompt generator
-A prompt generator based on wildcards and dynamic prompts
+# Stable diffusion prompt generator extension
+A prompt generator extension based on wildcards and dynamic prompts
 
 
 based on: https://github.com/jtkelm2/stable-diffusion-webui-1/blob/master/scripts/wildcards.py
