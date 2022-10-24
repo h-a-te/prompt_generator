@@ -1,8 +1,8 @@
 import os
 import random
 import re
+import glob
 from random import choices
-
 
 import modules.scripts as scripts
 import modules.images as images
@@ -26,17 +26,29 @@ def parse_tag(tag):
 
 
 class TagLoader:
+    files = []
+    wildcard_location = None
     loaded_tags = {}
     missing_tags = set()
+
+    def __init__(self):
+        self.files = []
 
     def load_tags(self, filePath):
         filepath_lower = filePath.lower()
         if self.loaded_tags.get(filePath):
             return self.loaded_tags.get(filePath)
 
-        replacement_file = os.path.join(os.getcwd(), "scripts", "wildcards", f"{filePath}.txt")
-        if os.path.isfile(replacement_file):
-            with open(replacement_file, encoding="utf8") as f:
+        if self.wildcard_location is None:
+            dir_path = glob.glob(f'**/wildcards/', recursive=True)
+            if (len(dir_path)) > 0:
+                self.wildcard_location = dir_path[0]
+
+        file_path = os.path.join(self.wildcard_location, f'{filePath}.txt')
+
+        if self.wildcard_location and os.path.isfile(file_path):
+            with open(file_path, encoding="utf8") as f:
+                self.files.append(f"{filePath}.txt")
                 lines = f.read().splitlines()
                 # remove 'commented out' lines
                 self.loaded_tags[filepath_lower] = [item for item in lines if not item.startswith('#')]
@@ -48,8 +60,6 @@ class TagLoader:
 
 
 class TagSelector:
-
-
     def __init__(self, tag_loader, options):
         self.tag_loader = tag_loader
         self.previously_selected_tags = {}
@@ -238,7 +248,6 @@ class NegativePromptGenerator:
         return " ".join(self.negative_tag)
 
 
-
 class Script(scripts.Script):
     def title(self):
         return "Prompt generator"
@@ -252,8 +261,9 @@ class Script(scripts.Script):
                 same_seed = gr.Checkbox(label='Use same prompt for each image', value=False)
                 negative_prompt = gr.Checkbox(label='Generate negative tags?', value=False)
             option_generator = OptionGenerator(TagLoader())
-            options = [gr.Dropdown(label=opt, choices=["RANDOM"] + option_generator.get_option_choices(opt), value="RANDOM")
-                       for opt in option_generator.get_configurable_options()]
+            options = [
+                gr.Dropdown(label=opt, choices=["RANDOM"] + option_generator.get_option_choices(opt), value="RANDOM")
+                for opt in option_generator.get_configurable_options()]
 
         return [same_seed, negative_prompt] + options
 
@@ -275,7 +285,6 @@ class Script(scripts.Script):
         if same_seed and negative_prompt:
             p.negative_prompt = prompt_generator.get_negative_tags()
             print('generated negative prompt', p.negative_prompt)
-
 
         if original_prompt != p.all_prompts[0]:
             p.extra_generation_params["Wildcard prompt"] = original_prompt
