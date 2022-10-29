@@ -4,14 +4,8 @@ import re
 import glob
 from random import choices
 
-import modules.scripts as scripts
-import modules.images as images
 import gradio as gr
-
-from modules.processing import Processed, process_images
-from modules.shared import opts, cmd_opts, state
 from modules import scripts, script_callbacks, shared
-from modules.styles import StyleDatabase
 
 
 def get_index(items, item):
@@ -259,7 +253,7 @@ class Script(scripts.Script):
         with gr.Group():
             with gr.Row():
                 same_seed = gr.Checkbox(label='Use same prompt for each image', value=False)
-                negative_prompt = gr.Checkbox(label='Generate negative tags?', value=False)
+                negative_prompt = gr.Checkbox(label='Allow **negative keywords** from wildcards in Negative Prompts', value=False)
             option_generator = OptionGenerator(TagLoader())
             options = [
                 gr.Dropdown(label=opt, choices=["RANDOM"] + option_generator.get_option_choices(opt), value="RANDOM")
@@ -275,7 +269,6 @@ class Script(scripts.Script):
         }
         prompt_generator = PromptGenerator(options)
 
-        print(p.negative_prompt)
         for i in range(len(p.all_prompts)):
             random.seed(p.all_seeds[0 if same_seed else i])
             prompt = p.all_prompts[i]
@@ -283,8 +276,7 @@ class Script(scripts.Script):
             p.all_prompts[i] = prompt
 
         if same_seed and negative_prompt:
-            p.negative_prompt = prompt_generator.get_negative_tags()
-            print('generated negative prompt', p.negative_prompt)
+            p.negative_prompt = p.negative_prompt + " " + prompt_generator.get_negative_tags()
 
         if original_prompt != p.all_prompts[0]:
             p.extra_generation_params["Wildcard prompt"] = original_prompt
