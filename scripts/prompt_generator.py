@@ -34,23 +34,24 @@ class TagLoader:
             return self.loaded_tags.get(filePath)
 
         if self.wildcard_location is None:
-            dir_path = glob.glob(f'**/wildcards/', recursive=True)
+            dir_path = glob.glob(f'**/wildcards', recursive=True)
             if (len(dir_path)) > 0:
-                self.wildcard_location = dir_path[0]
+                self.wildcard_location = dir_path
 
-        file_path = os.path.join(self.wildcard_location, f'{filePath}.txt')
+        for paths in self.wildcard_location:
+            split_filepath = re.split('\/', filePath)
+            file_path = os.path.join(paths, *split_filepath) + '.txt'
 
-        if self.wildcard_location and os.path.isfile(file_path):
-            with open(file_path, encoding="utf8") as f:
-                self.files.append(f"{filePath}.txt")
-                lines = f.read().splitlines()
-                # remove 'commented out' lines
-                self.loaded_tags[filepath_lower] = [item for item in lines if not item.startswith('#')]
-        else:
-            self.missing_tags.add(filePath)
-            return []
+            if os.path.isfile(file_path):
+                with open(file_path, encoding="utf8") as f:
+                    self.files.append(f"{filePath}.txt")
+                    lines = f.read().splitlines()
+                    # remove 'commented out' lines
+                    self.loaded_tags[filepath_lower] = [item for item in lines if not item.startswith('#')]
+                    return self.loaded_tags[filepath_lower]
 
-        return self.loaded_tags.get(filepath_lower) if self.loaded_tags.get(filepath_lower) else []
+        self.missing_tags.add(filePath)
+        return []
 
 
 class TagSelector:
@@ -275,7 +276,7 @@ class Script(scripts.Script):
             prompt = prompt_generator.generate_single_prompt(prompt)
             p.all_prompts[i] = prompt
 
-        if same_seed and negative_prompt:
+        if negative_prompt:
             p.negative_prompt = p.negative_prompt + " " + prompt_generator.get_negative_tags()
 
         if original_prompt != p.all_prompts[0]:
